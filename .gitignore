@@ -1,0 +1,17 @@
+build/
+*.o
+*.out
+
+# Compiled binaries
+naive
+blocked
+avx2
+aligned
+threaded
+
+# VS Code
+.vscode/
+
+# AMD uProf output
+*.pstat
+*.csv
