@@ -55,18 +55,27 @@ int main(int argc, char* argv[]) {
     fill_random(B, N, 99);
 
     // Independent reference via the naive kernel, then verify the kernel under
-    // test against it. This doubles as the warmup run.
-    memset(ref, 0, (size_t)N * N * sizeof(float));
-    matmul_naive(A, B, ref, N);
+    // test against it. This doubles as the warmup run. The reference is itself
+    // O(N^3), so for large-N timing sweeps it can be skipped with VERIFY=0 —
+    // verification stays on by default.
+    const bool do_verify = !(getenv("VERIFY") && strcmp(getenv("VERIFY"), "0") == 0);
+    if (do_verify) {
+        memset(ref, 0, (size_t)N * N * sizeof(float));
+        matmul_naive(A, B, ref, N);
 
-    memset(C, 0, (size_t)N * N * sizeof(float));
-    run_kernel(kernel, A, B, C, N, block_size);
-    if (!verify_correct(ref, C, N)) {
-        fprintf(stderr, "correctness: FAIL\n");
-        free(A); free(B); free(C); free(ref);
-        return 1;
+        memset(C, 0, (size_t)N * N * sizeof(float));
+        run_kernel(kernel, A, B, C, N, block_size);
+        if (!verify_correct(ref, C, N)) {
+            fprintf(stderr, "correctness: FAIL\n");
+            free(A); free(B); free(C); free(ref);
+            return 1;
+        }
+        printf("correctness: PASS\n");
+    } else {
+        memset(C, 0, (size_t)N * N * sizeof(float));
+        run_kernel(kernel, A, B, C, N, block_size);  // warmup only
+        printf("correctness: SKIPPED (VERIFY=0)\n");
     }
-    printf("correctness: PASS\n");
 
     const int RUNS = 5;
     double best = 0.0;

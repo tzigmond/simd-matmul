@@ -10,10 +10,13 @@ STD      := -std=c++17
 # naive/blocked are honest scalar baselines (vectorization disabled), the SIMD
 # stages get AVX2+FMA, and *only* threaded.o is compiled with -fopenmp so the
 # omp pragma in the shared core activates for that translation unit alone.
-FLAGS_BASELINE := -O2 -march=native -fno-tree-vectorize $(STD)
-FLAGS_SIMD     := -O3 -march=native -mavx2 -mfma $(STD)
-FLAGS_THREADED := -O3 -march=native -mavx2 -mfma -fopenmp $(STD)
-FLAGS_PLAIN    := -O2 -march=native $(STD)
+# -MMD -MP emits per-object .d files so edits to shared headers (e.g.
+# avx2_kernel.h, included by three kernels) trigger the right recompiles.
+DEPFLAGS       := -MMD -MP
+FLAGS_BASELINE := -O2 -march=native -fno-tree-vectorize $(STD) $(DEPFLAGS)
+FLAGS_SIMD     := -O3 -march=native -mavx2 -mfma $(STD) $(DEPFLAGS)
+FLAGS_THREADED := -O3 -march=native -mavx2 -mfma -fopenmp $(STD) $(DEPFLAGS)
+FLAGS_PLAIN    := -O2 -march=native $(STD) $(DEPFLAGS)
 
 OBJS := $(OBJ)/naive.o $(OBJ)/blocked.o $(OBJ)/avx2.o $(OBJ)/aligned.o \
         $(OBJ)/threaded.o $(OBJ)/openblas.o $(OBJ)/benchmark.o $(OBJ)/utils.o
@@ -48,3 +51,5 @@ $(BIN): $(OBJS)
 
 clean:
 	rm -rf $(OUTDIR)
+
+-include $(OBJS:.o=.d)

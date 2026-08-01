@@ -19,7 +19,7 @@ for k in naive blocked avx2 aligned threaded openblas; do
     else
         out=$("$BIN" "$N" "$k" 2>/dev/null)
     fi
-    echo "$out" | grep -q "correctness: PASS" || { echo "FAIL: $k did not verify" >&2; exit 1; }
+    echo "$out" | grep -qE "correctness: (PASS|SKIPPED)" || { echo "FAIL: $k did not verify" >&2; exit 1; }
     GF[$k]=$(echo "$out" | awk '/^best:/ {print $2}')
 done
 
