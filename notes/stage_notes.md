@@ -1,22 +1,54 @@
 # Stage Notes
 
+Working notes on each kernel: what changed, and what the measurement actually
+showed (see results/benchmarks.md for numbers).
+
 ## Stage 1 — Naive triple-loop
-The baseline teaches you where the ceiling is before any optimization — the inner loop's column-stride access to B thrashes the cache on every iteration, so this kernel is almost entirely bottlenecked on memory latency rather than compute.
+i-j-k dot-product order. `B[k*N+j]` strides by N floats down a column each step,
+so one useful float per 64-byte line fetched. Fine while the matrix fits in cache
+(2.46 GFLOP/s at N=512), collapses once it does not (0.75 at N=1024). This is the
+baseline the rest is measured against, compiled `-fno-tree-vectorize` so it stays
+honestly scalar.
 
 ## Stage 2 — Cache-blocked tiling
-Blocking teaches that the cache hierarchy is the real bottleneck for memory-bound kernels — by keeping a tile of B resident in L1, you go from one memory access per FLOP to one memory access per tile worth of FLOPs.
+Two changes: i-k-j order (inner loop now streams B and C contiguously) and
+tiling into block_size chunks so a B tile is reused across the A tile's rows.
+Still scalar. Win is size-dependent: 1.6× at N=512, 5.5× at N=1024 — blocking
+only pays once the naive working set stops fitting in cache. Worth remembering
+that the loop-reorder alone (i-k-j) already recovers a lot; the tiling adds
+reuse on top.
 
 ## Stage 3 — AVX2 vectorization
-AVX2 teaches that the CPU's vector units are doing almost nothing in the naive and blocked kernels — switching to 256-bit FMA lets you retire 8 FMAs per instruction instead of one, turning a memory-bottleneck problem into a compute-throughput problem.
+Inner j loop becomes `_mm256_fmadd_ps`: broadcast one A element, load 8 contiguous
+B elements, accumulate 8 columns of C. ~5× over blocked (4.15 → 22 GFLOP/s at
+N=1024). Scalar tail handles the last <8 columns so arbitrary N stays correct.
+The core is templated on load alignment and shared with stages 4 and 5.
 
-## Stage 4 — 32-byte alignment
-Alignment teaches that unaligned 256-bit loads have a hidden penalty on Zen 2 when they cross cache line boundaries — posix_memalign with aligned loads is a small but measurable win that shows up clearly in the load latency counters.
+## Stage 4 — 32-byte alignment (negative result)
+Hypothesis: aligned loads beat unaligned. Measured: no difference beyond noise
+(see the five-trial comparison in results). On this microarchitecture `vmovups`
+on aligned data is as fast as `vmovaps`; alignment only matters on accesses that
+split a cache line, which these don't. Kept as an honest negative rather than
+inflated into a fake 5-15% win. The real lever left here is register blocking
+(compute a 4x2 tile of C per k step to reuse loaded B across multiple C rows) —
+that would move the needle where alignment did not.
 
 ## Stage 5 — OpenMP multithreading
-Threading teaches that once you've extracted per-core throughput, you scale to all 8 cores essentially for free with a single pragma — and that the scheduling and false-sharing story matters as much as the thread count.
+`#pragma omp parallel for schedule(static)` on the outer ii loop. Each thread owns
+a disjoint stripe of C rows, so no race and no false sharing (stripes are
+block_size rows apart). Same source as stage 4 — only the -fopenmp compile flag
+differs. Scaling at N=1024: 23 → 45 → 68 → 103 GFLOP/s on 1/2/4/8 threads. Sub-
+linear past 4 threads because the kernel is partly memory-bandwidth bound, not
+compute bound — worth profiling to confirm.
 
-## Stage 6 — OpenBLAS reference ceiling
-OpenBLAS teaches humility and context — seeing how far a professionally tuned BLAS is above your kernel tells you exactly how much headroom is left and what techniques (micro-kernel register blocking, loop unrolling, prefetch intrinsics) would close the gap.
+## Stage 6 — OpenBLAS reference
+`cblas_sgemm`. The ceiling: 124 GFLOP/s at N=1024, ~1.3× over the threaded kernel.
+The gap is register-blocked micro-kernels, software prefetch, and panel packing.
+Closing it would mean writing a packed micro-kernel — the obvious next step if
+this project continues.
 
-## Stage 7 — Profiling and attribution
-This stage teaches that "X% faster" is a weak claim without a counter to back it — every speedup in this project is assigned a specific hardware event, which is the difference between an engineer who benchmarks and one who understands the machine.
+## Stage 7 — Hardware counter attribution (blocked on environment)
+The intent was to back each speedup with a counter (L1 miss rate for blocking,
+256-bit FP ops for AVX2, IPC for threading). WSL2 does not expose the PMU — perf
+returns `<not supported>` for hardware events. This is deferred to a bare-metal
+run; until then the attributions are the expected mechanism, not measured fact.
