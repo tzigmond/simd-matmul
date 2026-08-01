@@ -1,19 +1,35 @@
 #include "matmul.h"
-#include <cstdio>
+#include <algorithm>
 
-// TODO: implement cache-blocked tiling
+// Cache-blocked scalar kernel. Two things change relative to naive:
 //
-// Partition A, B, C into block_size x block_size tiles. Process one tile
-// at a time so the working set fits in L1/L2 cache, eliminating the column
-// stride misses that kill the naive kernel on large N.
+//   1. Loop order goes from i-j-k (dot product, which strides B by N floats on
+//      every step) to i-k-j, so the innermost loop walks B[k][*] and C[i][*]
+//      contiguously. This alone removes the column-stride misses.
+//   2. The i/k/j ranges are tiled into block_size chunks so a block_size^2 tile
+//      of B stays resident in L1/L2 and is reused across all rows of the A tile,
+//      turning O(1) FLOPs per memory access into O(block_size).
 //
-// Expected hardware effect: L1 miss rate drops sharply (verify with AMD uProf
-// dc_miss_l2 counter). Speedup is typically 2-4x over naive at N=1024.
-//
-// Reference: Lam, Rothberg, Wolf — "The Cache Performance and Optimizations
-// of Blocked Algorithms" (ASPLOS 1991)
-
+// Compiled with -fno-tree-vectorize so this stage isolates the *cache* win;
+// vectorization is introduced separately in the AVX2 stage. Relies on C being
+// pre-zeroed (the harness memsets it) because it accumulates with +=.
 void matmul_blocked(const float* A, const float* B, float* C, int N, int block_size) {
-    fprintf(stderr, "WARNING: %s not yet implemented — falling back to naive\n", __func__);
-    matmul_naive(A, B, C, N);
+    const int BS = block_size > 0 ? block_size : 64;
+
+    for (int ii = 0; ii < N; ii += BS) {
+        const int imax = std::min(ii + BS, N);
+        for (int kk = 0; kk < N; kk += BS) {
+            const int kmax = std::min(kk + BS, N);
+            for (int jj = 0; jj < N; jj += BS) {
+                const int jmax = std::min(jj + BS, N);
+                for (int i = ii; i < imax; ++i) {
+                    for (int k = kk; k < kmax; ++k) {
+                        const float a = A[i*N + k];
+                        for (int j = jj; j < jmax; ++j)
+                            C[i*N + j] += a * B[k*N + j];
+                    }
+                }
+            }
+        }
+    }
 }
