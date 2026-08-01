@@ -1,7 +1,7 @@
 # Benchmark Results
 
-Hardware: Intel Core Ultra 7 155H (Meteor Lake, 16C/22T) | L1d 48 KB/core, L2 2 MB/core, L3 24 MB shared | 32 GB LPDDR5
-Environment: WSL2 Ubuntu 24.04, g++ 13.3 | single precision | best of 5 timed runs after a warmup
+Hardware: Intel Core Ultra 7 155H (Meteor Lake), 22 logical CPUs | per-core L1d 48 KB, L1i 64 KB, L2 2 MB (64-byte lines), shared L3 24 MB | 16 GB visible to the WSL2 VM | AVX2/FMA3, no AVX-512
+Environment: Ubuntu 24.04.4 LTS on WSL2 (kernel 6.6.87.2-microsoft-standard-WSL2), g++ 13.3.0 | single precision | best of 5 timed runs after a warmup
 Reproduce: `make all && ./scripts/run_bench.sh 1024 8`
 
 All kernels are verified against a naive reference (relative tolerance 1e-3) before
