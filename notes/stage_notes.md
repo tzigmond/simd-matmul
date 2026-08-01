@@ -25,13 +25,15 @@ N=1024). Scalar tail handles the last <8 columns so arbitrary N stays correct.
 The core is templated on load alignment and shared with stages 4 and 5.
 
 ## Stage 4 — 32-byte alignment (negative result)
-Hypothesis: aligned loads beat unaligned. Measured: no difference beyond noise
-(see the five-trial comparison in results). On this microarchitecture `vmovups`
-on aligned data is as fast as `vmovaps`; alignment only matters on accesses that
-split a cache line, which these don't. Kept as an honest negative rather than
-inflated into a fake 5-15% win. The real lever left here is register blocking
-(compute a 4x2 tile of C per k step to reuse loaded B across multiple C rows) —
-that would move the needle where alignment did not.
+Hypothesis: aligned loads beat unaligned. Measured head-to-head (4 trials each,
+same session to control for drift): aligned is reproducibly ~13% *slower*, not
+faster — avx2 ~13.1-14.6, aligned ~11.1-12.3 GFLOP/s. On this microarchitecture
+`vmovups` on aligned data is as fast as `vmovaps`, so there's no upside, and the
+wrapper's runtime `N%8` branch is a small downside. Alignment only matters on
+accesses that split a cache line, which these don't. Kept as an honest negative
+rather than inflated into a fake 5-15% win. The real lever left here is register
+blocking (compute a 4x2 tile of C per k step to reuse loaded B across multiple C
+rows) — that would move the needle where alignment did not.
 
 ## Stage 5 — OpenMP multithreading
 `#pragma omp parallel for schedule(static)` on the outer ii loop. Each thread owns
@@ -52,3 +54,12 @@ The intent was to back each speedup with a counter (L1 miss rate for blocking,
 256-bit FP ops for AVX2, IPC for threading). WSL2 does not expose the PMU — perf
 returns `<not supported>` for hardware events. This is deferred to a bare-metal
 run; until then the attributions are the expected mechanism, not measured fact.
+
+## On variance (measurement caveat)
+This is a throttled laptop under WSL2. Absolute GFLOP/s swings up to ~2× between
+sessions (OpenBLAS up to 7.5×, since it self-threads and is contention-sensitive).
+Within a tight back-to-back set the numbers are stable to a few percent. The
+takeaway: the single-core chain (naive→blocked→avx2→aligned) throttles together
+so its speedup ratios are trustworthy; multicore rows decouple from the single-
+core baseline, so their speedup-vs-naive is only meaningful as a range. Report
+ratios, not absolutes.

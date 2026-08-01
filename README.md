@@ -7,10 +7,13 @@ Every kernel is verified against a naive reference before timing, and each stage
 is meant to isolate one effect: cache locality, vector throughput, load
 alignment, or core scaling.
 
-Measured on this machine, the progression at N=1024 runs from 0.75 GFLOP/s
-(naive) to 92.7 GFLOP/s (8-thread), with OpenBLAS at 124.5. One stage — aligned
-loads — produced **no** measurable gain, and the writeup keeps it as a negative
-result instead of inflating it. See [`results/benchmarks.md`](results/benchmarks.md).
+Measured on this machine, the single-core progression at N=1024 runs from ~0.8
+GFLOP/s (naive) to ~24 (AVX2) — a stable ~30× — with OpenMP threading reaching
+70–130 and OpenBLAS as the ceiling. One stage, aligned loads, produced **no**
+gain (reproducibly ~13% slower head-to-head), kept as an honest negative result.
+This is a throttled laptop, so absolute numbers swing up to 2× between sessions
+(OpenBLAS up to 7×) — the *speedup ratios* are the trustworthy result, not the
+absolutes. Full analysis in [`results/benchmarks.md`](results/benchmarks.md).
 
 ---
 
@@ -53,20 +56,26 @@ skip the O(N³) reference check when timing very large matrices.
 
 ---
 
-## Results (N = 1024, best of 5)
+## Results (N = 1024, one same-session sweep)
 
 | Kernel | GFLOP/s | Speedup vs naive | Effect |
 |--------|---------|------------------|--------|
-| Naive triple-loop | 0.75 | 1.0× | column-stride B access thrashes cache |
-| Cache-blocked | 4.15 | 5.5× | i-k-j tiling keeps a B tile L1-resident |
-| AVX2 vectorized | 22.0 | 29× | 8-wide FMA across columns |
-| 32-byte aligned | 19.8 | 26× | no gain over AVX2 (within noise) |
-| OpenMP threaded (8T) | 92.7 | 124× | disjoint C-row stripes across cores |
-| OpenBLAS (reference) | 124.5 | 166× | tuned micro-kernel ceiling |
+| Naive triple-loop | 0.83 | 1.0× | column-stride B access thrashes cache |
+| Cache-blocked | 5.28 | 6.4× | i-k-j tiling keeps a B tile L1-resident |
+| AVX2 vectorized | 23.8 | 29× | 8-wide FMA across columns |
+| 32-byte aligned | ~20 | ~24× | no gain over AVX2 (≈13% slower head-to-head) |
+| OpenMP threaded (8T) | 70–130 | see note | disjoint C-row stripes across cores |
+| OpenBLAS (reference) | 41–308 | see note | tuned, self-threaded ceiling |
 
+**Read the ratios, not the absolutes.** This is a throttled laptop: the same
+binary swings up to ~2× between sessions (OpenBLAS up to 7.5×). The single-core
+chain (naive→blocked→avx2→aligned) throttles together so its *speedups* are
+stable and real; the multicore rows (threaded, OpenBLAS) decouple from the
+single-core baseline, so their speedup-vs-naive is only meaningful as a range.
 Threaded scaling at N=1024: 23 → 45 → 68 → 103 GFLOP/s on 1/2/4/8 threads
-(sub-linear past 4 — partly bandwidth bound). Full data, the N=512 sweep, and the
-aligned negative-result analysis are in [`results/benchmarks.md`](results/benchmarks.md).
+(sub-linear past 4 — partly bandwidth bound). Full data, the N=512 and N=2048
+sweeps, the variance table, and the aligned head-to-head are in
+[`results/benchmarks.md`](results/benchmarks.md).
 
 ---
 
@@ -102,7 +111,10 @@ between the threaded kernel here and OpenBLAS.
   `<not supported>` for hardware events — so per-stage counter attribution
   (L1 miss rate, FP-pipe utilization, IPC) is deferred to a bare-metal run. The
   intended `perf` commands are listed in [`results/benchmarks.md`](results/benchmarks.md).
-- **The aligned stage is a negative result**, kept for honesty.
+- **The aligned stage is a negative result** (~13% slower head-to-head), kept
+  for honesty rather than deleted or inflated.
+- **Absolute throughput is session-dependent** (up to 2×, OpenBLAS up to 7.5×) on
+  this throttled laptop; the speedup ratios are the stable result.
 - **Next step to close the OpenBLAS gap**: a register-blocked micro-kernel with
   panel packing and software prefetch.
 
