@@ -1,18 +1,18 @@
 # SIMD Matrix Multiplication Kernel
 
-A single-precision dense matrix multiply optimized in five stages — naive
+A single-precision dense matrix multiply optimized in five stages, naive
 triple-loop, cache-blocked tiling, AVX2 FMA vectorization, 32-byte aligned loads,
-and OpenMP multithreading — benchmarked against OpenBLAS as a reference ceiling.
+and OpenMP multithreading, benchmarked against OpenBLAS as a reference ceiling.
 Every kernel is verified against a naive reference before timing, and each stage
 is meant to isolate one effect: cache locality, vector throughput, load
 alignment, or core scaling.
 
 Measured on this machine, the single-core progression at N=1024 runs from ~0.8
-GFLOP/s (naive) to ~24 (AVX2) — a stable ~30× — with OpenMP threading reaching
-70–130 and OpenBLAS as the ceiling. One stage, aligned loads, produced **no**
+GFLOP/s (naive) to ~24 (AVX2), a stable ~30×, with OpenMP threading reaching
+70-130 and OpenBLAS as the ceiling. One stage, aligned loads, produced **no**
 gain (reproducibly ~13% slower head-to-head), kept as an honest negative result.
 This is a throttled laptop, so absolute numbers swing up to 2× between sessions
-(OpenBLAS up to 7×) — the *speedup ratios* are the trustworthy result, not the
+(OpenBLAS up to 7×), the *speedup ratios* are the trustworthy result, not the
 absolutes. Full analysis in [`results/benchmarks.md`](results/benchmarks.md).
 
 ---
@@ -32,7 +32,7 @@ make clean
 All kernels link into one `build/benchmark`. Each kernel object is compiled with
 its own stage flags (baselines with `-fno-tree-vectorize`, SIMD stages with
 `-O3 -march=native -mavx2 -mfma`, and only the threaded object with `-fopenmp`),
-then linked together — so every kernel is measured under the codegen it actually
+then linked together, so every kernel is measured under the codegen it actually
 represents.
 
 ## Run
@@ -64,8 +64,8 @@ skip the O(N³) reference check when timing very large matrices.
 | Cache-blocked | 5.28 | 6.4× | i-k-j tiling keeps a B tile L1-resident |
 | AVX2 vectorized | 23.8 | 29× | 8-wide FMA across columns |
 | 32-byte aligned | ~20 | ~24× | no gain over AVX2 (≈13% slower head-to-head) |
-| OpenMP threaded (8T) | 70–130 | see note | disjoint C-row stripes across cores |
-| OpenBLAS (reference) | 41–308 | see note | tuned, self-threaded ceiling |
+| OpenMP threaded (8T) | 70-130 | see note | disjoint C-row stripes across cores |
+| OpenBLAS (reference) | 41-308 | see note | tuned, self-threaded ceiling |
 
 **Read the ratios, not the absolutes.** This is a throttled laptop: the same
 binary swings up to ~2× between sessions (OpenBLAS up to 7.5×). The single-core
@@ -73,7 +73,7 @@ chain (naive→blocked→avx2→aligned) throttles together so its *speedups* ar
 stable and real; the multicore rows (threaded, OpenBLAS) decouple from the
 single-core baseline, so their speedup-vs-naive is only meaningful as a range.
 Threaded scaling at N=1024: 23 → 45 → 68 → 103 GFLOP/s on 1/2/4/8 threads
-(sub-linear past 4 — partly bandwidth bound). Full data, the N=512 and N=2048
+(sub-linear past 4, partly bandwidth bound). Full data, the N=512 and N=2048
 sweeps, the variance table, and the aligned head-to-head are in
 [`results/benchmarks.md`](results/benchmarks.md).
 
@@ -81,7 +81,7 @@ sweeps, the variance table, and the aligned head-to-head are in
 
 ## The design decision worth asking about: why block instead of transpose B?
 
-The naive kernel is slow because of one line — the inner loop reads
+The naive kernel is slow because of one line, the inner loop reads
 `B[k*N + j]`, striding N floats (a full row) down a column of B every step. A
 cache line holds 16 floats; this uses one of them before jumping away, so B is
 re-fetched from memory over and over.
@@ -89,7 +89,7 @@ re-fetched from memory over and over.
 There are two standard fixes:
 
 - **Transpose B once** into `B_T`, so `B_T[j*N + k]` is contiguous in the inner
-  loop. Simple, and it makes the access sequential — but it costs an O(N²) copy
+  loop. Simple, and it makes the access sequential, but it costs an O(N²) copy
   and doubles B's memory footprint.
 - **Block/tile** the loops (what this project does) so a `block_size²` tile of B
   is loaded once and reused across a whole tile of A rows. Zero copy, in place,
@@ -97,7 +97,7 @@ There are two standard fixes:
 
 Blocking wins when B changes between multiplies or you multiply once, because you
 never pay the transpose. Transpose wins when you reuse the same B across many
-multiplies and want dead-simple inner code. They also compose — a tuned kernel
+multiplies and want dead-simple inner code. They also compose, a tuned kernel
 (and OpenBLAS) *packs* tiles into a transposed, aligned scratch buffer, getting
 both contiguous access and reuse. That packing is most of the remaining gap
 between the threaded kernel here and OpenBLAS.
@@ -107,8 +107,8 @@ between the threaded kernel here and OpenBLAS.
 ## Honest scope
 
 - **Numbers are wall-clock GFLOP/s**, verified correct and reproducible, but not
-  backed by hardware counters. WSL2 does not expose the PMU — `perf` returns
-  `<not supported>` for hardware events — so per-stage counter attribution
+  backed by hardware counters. WSL2 does not expose the PMU, `perf` returns
+  `<not supported>` for hardware events, so per-stage counter attribution
   (L1 miss rate, FP-pipe utilization, IPC) is deferred to a bare-metal run. The
   intended `perf` commands are listed in [`results/benchmarks.md`](results/benchmarks.md).
 - **The aligned stage is a negative result** (~13% slower head-to-head), kept

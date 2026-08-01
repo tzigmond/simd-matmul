@@ -56,7 +56,7 @@ int main(int argc, char* argv[]) {
 
     // Independent reference via the naive kernel, then verify the kernel under
     // test against it. This doubles as the warmup run. The reference is itself
-    // O(N^3), so for large-N timing sweeps it can be skipped with VERIFY=0 —
+    // O(N^3), so for large-N timing sweeps it can be skipped with VERIFY=0,
     // verification stays on by default.
     const bool do_verify = !(getenv("VERIFY") && strcmp(getenv("VERIFY"), "0") == 0);
     if (do_verify) {

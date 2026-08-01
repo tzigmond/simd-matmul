@@ -1,7 +1,7 @@
 #include "matmul.h"
 #include "avx2_kernel.h"
 
-// Identical source to the aligned kernel — the difference is entirely in the
+// Identical source to the aligned kernel, the difference is entirely in the
 // build: this translation unit is the only one compiled with -fopenmp, so the
 // `#pragma omp parallel for` guarding the outer ii loop in avx2_kernel.h becomes
 // active here and is a no-op everywhere else. Threads split the ii row-tiles
