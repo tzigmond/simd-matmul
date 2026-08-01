@@ -122,18 +122,16 @@ between the threaded kernel here and OpenBLAS.
 
 ## System
 
-All values are what is actually visible from this environment, not vendor
-marketing numbers. Where WSL2 hides or virtualizes a value, that is stated.
+The specs that matter for a SIMD benchmark: vector width, cache sizes, and core
+count. Run under WSL2, which is why hardware performance counters are not
+available (noted in the methodology above).
 
 | Component | Details |
 |-----------|---------|
-| CPU | Intel Core Ultra 7 155H (Meteor Lake), GenuineIntel, x86_64 |
-| Topology (as seen) | 22 logical CPUs, reported by lscpu as 11 cores x 2 threads (physical part is a 16-core / 22-thread hybrid: 6 P + 8 E + 2 LP-E) |
-| Clocks | not measurable under the hypervisor; BogoMIPS 5990. Intel-rated P-core boost is 4.8 GHz (reference only, not observed) |
-| SIMD / ISA | SSE, SSE2, SSSE3, SSE4.1, SSE4.2, AVX, AVX2, FMA3, F16C, BMI1, BMI2, AES, VAES, AVX-VNNI. No AVX-512, so 256-bit is the max vector width (the reason this project targets AVX2) |
-| Cache (per core) | L1d 48 KB, L1i 64 KB, L2 2 MB; 64-byte lines |
-| Cache (shared) | L3 24 MB |
-| Memory | 16 GB (15.3 GiB MemTotal) visible to the WSL2 VM; type/speed not queryable under WSL2 (dmidecode blocked) |
-| Virtualization | Microsoft Hypervisor, VT-x, full virtualization; PMU not exposed (perf hardware counters return `<not supported>`) |
-| OS | Ubuntu 24.04.4 LTS on WSL2, kernel 6.6.87.2-microsoft-standard-WSL2 |
-| Toolchain | g++ 13.3.0, glibc 2.39 |
+| CPU | Intel Core Ultra 7 155H (Meteor Lake) |
+| Cores | 6 performance + 8 efficiency + 2 low-power-efficiency |
+| SIMD / ISA | AVX2 + FMA3 (no AVX-512, so 256-bit is the max vector width, which is why this project targets AVX2) |
+| Cache | L1d 48 KB, L2 2 MB per core; L3 24 MB shared; 64-byte lines |
+| Memory | 16 GB |
+| OS | Ubuntu 24.04 on WSL2 |
+| Toolchain | g++ 13.3, `-O3 -march=native` |
