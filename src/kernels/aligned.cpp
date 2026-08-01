@@ -1,21 +1,13 @@
 #include "matmul.h"
-#include <cstdio>
+#include "avx2_kernel.h"
 
-// TODO: implement 32-byte aligned AVX2 kernel
-//
-// Same as avx2.cpp but allocate A, B, C with posix_memalign (32-byte
-// alignment) and use _mm256_load_ps instead of _mm256_loadu_ps.
-// Aligned loads avoid the cross-cache-line penalty on misaligned 256-bit
-// accesses, improving load throughput on Zen 2.
-//
-// Expected hardware effect: load efficiency improves (verify with AMD uProf
-// MemBandwidth / L1 load latency counters). Speedup over avx2 is modest
-// (~5-15%) but measurable and worth understanding.
-//
-// Note: benchmark.cpp must be updated to use aligned allocation for this
-// kernel — document that change when implementing.
-
+// Same tiled AVX2 core, but with _mm256_load_ps / _mm256_store_ps instead of the
+// unaligned variants. Aligned 256-bit loads avoid the split-load penalty when an
+// access straddles a cache line. This is only safe when every row start B[k*N]
+// and C[i*N] is 32-byte aligned: the harness allocates the buffers with
+// posix_memalign(32), so it comes down to N being a multiple of 8. If it is not,
+// fall back to the unaligned path to stay correct rather than fault.
 void matmul_aligned(const float* A, const float* B, float* C, int N) {
-    fprintf(stderr, "WARNING: %s not yet implemented — falling back to naive\n", __func__);
-    matmul_naive(A, B, C, N);
+    if (N % 8 == 0) avx2_matmul_impl</*Aligned=*/true >(A, B, C, N, 64);
+    else            avx2_matmul_impl</*Aligned=*/false>(A, B, C, N, 64);
 }
