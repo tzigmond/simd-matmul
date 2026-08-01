@@ -1,39 +1,50 @@
 CXX      := g++
 INCLUDES := -Iinclude
 OUTDIR   := build
+OBJ      := $(OUTDIR)/obj
+BIN      := $(OUTDIR)/benchmark
+STD      := -std=c++17
 
-# Per-stage flags
-FLAGS_BASELINE := -O2 -fno-tree-vectorize
-FLAGS_AVX2     := -O3 -march=native -mavx2 -mfma
-FLAGS_THREADED := -O3 -march=native -mavx2 -mfma -fopenmp
+# Each kernel object is compiled with the flags that define its stage, then all
+# objects are linked into one binary. This is the whole point of the layout:
+# naive/blocked are honest scalar baselines (vectorization disabled), the SIMD
+# stages get AVX2+FMA, and *only* threaded.o is compiled with -fopenmp so the
+# omp pragma in the shared core activates for that translation unit alone.
+FLAGS_BASELINE := -O2 -march=native -fno-tree-vectorize $(STD)
+FLAGS_SIMD     := -O3 -march=native -mavx2 -mfma $(STD)
+FLAGS_THREADED := -O3 -march=native -mavx2 -mfma -fopenmp $(STD)
+FLAGS_PLAIN    := -O2 -march=native $(STD)
 
-.PHONY: all naive blocked avx2 aligned threaded clean
+OBJS := $(OBJ)/naive.o $(OBJ)/blocked.o $(OBJ)/avx2.o $(OBJ)/aligned.o \
+        $(OBJ)/threaded.o $(OBJ)/openblas.o $(OBJ)/benchmark.o $(OBJ)/utils.o
 
-all: naive blocked avx2 aligned threaded
+.PHONY: all clean
+all: $(BIN)
 
-KERNELS := src/kernels/naive.cpp src/kernels/blocked.cpp src/kernels/avx2.cpp \
-           src/kernels/aligned.cpp src/kernels/threaded.cpp
+$(OBJ):
+	mkdir -p $(OBJ)
 
-# Each binary links all kernels so benchmark.cpp can dispatch any of them.
-# The compile flags differ per target — that's where the optimization story lives.
+$(OBJ)/naive.o: src/kernels/naive.cpp | $(OBJ)
+	$(CXX) $(FLAGS_BASELINE) $(INCLUDES) -c $< -o $@
+$(OBJ)/blocked.o: src/kernels/blocked.cpp | $(OBJ)
+	$(CXX) $(FLAGS_BASELINE) $(INCLUDES) -c $< -o $@
+$(OBJ)/avx2.o: src/kernels/avx2.cpp | $(OBJ)
+	$(CXX) $(FLAGS_SIMD) $(INCLUDES) -c $< -o $@
+$(OBJ)/aligned.o: src/kernels/aligned.cpp | $(OBJ)
+	$(CXX) $(FLAGS_SIMD) $(INCLUDES) -c $< -o $@
+$(OBJ)/threaded.o: src/kernels/threaded.cpp | $(OBJ)
+	$(CXX) $(FLAGS_THREADED) $(INCLUDES) -c $< -o $@
+$(OBJ)/openblas.o: src/kernels/openblas.cpp | $(OBJ)
+	$(CXX) $(FLAGS_PLAIN) $(INCLUDES) -c $< -o $@
+$(OBJ)/benchmark.o: src/benchmark.cpp | $(OBJ)
+	$(CXX) $(FLAGS_PLAIN) $(INCLUDES) -c $< -o $@
+$(OBJ)/utils.o: src/utils.cpp | $(OBJ)
+	$(CXX) $(FLAGS_PLAIN) $(INCLUDES) -c $< -o $@
 
-naive: | $(OUTDIR)
-	$(CXX) $(FLAGS_BASELINE) $(INCLUDES) $(KERNELS) src/benchmark.cpp src/utils.cpp -o $(OUTDIR)/naive
-
-blocked: | $(OUTDIR)
-	$(CXX) $(FLAGS_BASELINE) $(INCLUDES) $(KERNELS) src/benchmark.cpp src/utils.cpp -o $(OUTDIR)/blocked
-
-avx2: | $(OUTDIR)
-	$(CXX) $(FLAGS_AVX2) $(INCLUDES) $(KERNELS) src/benchmark.cpp src/utils.cpp -o $(OUTDIR)/avx2
-
-aligned: | $(OUTDIR)
-	$(CXX) $(FLAGS_AVX2) $(INCLUDES) $(KERNELS) src/benchmark.cpp src/utils.cpp -o $(OUTDIR)/aligned
-
-threaded: | $(OUTDIR)
-	$(CXX) $(FLAGS_THREADED) $(INCLUDES) $(KERNELS) src/benchmark.cpp src/utils.cpp -o $(OUTDIR)/threaded
-
-$(OUTDIR):
-	mkdir -p $(OUTDIR)
+# Link with the OpenMP flag so threaded.o's libgomp references resolve, and
+# against OpenBLAS for the reference kernel.
+$(BIN): $(OBJS)
+	$(CXX) $(FLAGS_THREADED) $(OBJS) -o $(BIN) -lopenblas
 
 clean:
 	rm -rf $(OUTDIR)
