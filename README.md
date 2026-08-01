@@ -47,7 +47,9 @@ OMP_NUM_THREADS=8 ./build/benchmark 1024 threaded
 ```
 
 Each run verifies correctness against a naive reference, then reports per-run
-time and GFLOP/s over 5 timed runs after a warmup.
+time and GFLOP/s over 5 timed runs after a warmup. `block_size` tunes only the
+`blocked` kernel; the SIMD kernels use a fixed 64-wide tile. Set `VERIFY=0` to
+skip the O(N³) reference check when timing very large matrices.
 
 ---
 
